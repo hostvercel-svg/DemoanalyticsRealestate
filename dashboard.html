@@ -71,7 +71,11 @@
             </div>
             <div class="stat-card">
                 <h3>Top Traffic Source</h3>
-                <div class="value" id="stat-top-source" style="font-size:24px;">-</div>
+                <div class="value" id="stat-top-source" style="font-size:22px;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Top Device</h3>
+                <div class="value" id="stat-top-device" style="font-size:22px;">-</div>
             </div>
         </div>
 
@@ -218,26 +222,26 @@
                 }
             }
             
-            // Traffic Sources (Social Media Matrix)
-            let trafficSource = 'Direct';
-            
-            // Normalize inputs for easier checking
-            let utm = (ev.utm_source || '').toLowerCase();
-            let ref = (ev.referrer || '').toLowerCase();
-            
-            if (utm.includes('facebook') || ref.includes('facebook')) trafficSource = 'Facebook';
-            else if (utm.includes('instagram') || ref.includes('instagram')) trafficSource = 'Instagram';
-            else if (utm.includes('zameen') || ref.includes('zameen')) trafficSource = 'Zameen.com';
-            else if (utm.includes('olx') || ref.includes('olx')) trafficSource = 'OLX';
-            else if (utm.includes('whatsapp') || ref.includes('whatsapp') || ref.includes('wa.me')) trafficSource = 'WhatsApp';
-            else if (utm.includes('youtube') || ref.includes('youtube')) trafficSource = 'YouTube';
-            else if (utm.includes('tiktok') || ref.includes('tiktok')) trafficSource = 'TikTok';
-            else if (utm.includes('google') || ref.includes('google')) trafficSource = 'Google';
-            else if (utm.includes('twitter') || utm.includes('x') || ref.includes('twitter') || ref.includes('t.co')) trafficSource = 'X (Twitter)';
-            else if (ev.utm_source) trafficSource = `Ad: ${ev.utm_source}`;
-            else if (ev.referrer && ev.referrer !== 'Direct') trafficSource = 'Other Website';
-            
-            if(!countedSource.has(ev.session_id)) {
+            // Only count source once per session (first page_view only)
+            if(ev.event_type === 'page_view' && !countedSource.has(ev.session_id)) {
+                let trafficSource = 'Direct';
+                
+                // Normalize inputs for easier checking
+                let utm = (ev.utm_source || '').toLowerCase();
+                let ref = (ev.referrer || '').toLowerCase();
+                
+                if (utm.includes('facebook') || ref.includes('facebook') || ref.includes('l.facebook')) trafficSource = 'Facebook';
+                else if (utm.includes('instagram') || ref.includes('instagram')) trafficSource = 'Instagram';
+                else if (utm.includes('zameen') || ref.includes('zameen')) trafficSource = 'Zameen.com';
+                else if (utm.includes('olx') || ref.includes('olx')) trafficSource = 'OLX';
+                else if (utm.includes('whatsapp') || ref.includes('whatsapp') || ref.includes('wa.me') || ref.includes('api.whatsapp')) trafficSource = 'WhatsApp';
+                else if (utm.includes('youtube') || ref.includes('youtube')) trafficSource = 'YouTube';
+                else if (utm.includes('tiktok') || ref.includes('tiktok')) trafficSource = 'TikTok';
+                else if (utm.includes('google') || ref.includes('google')) trafficSource = 'Google';
+                else if (utm.includes('twitter') || ref.includes('twitter') || ref.includes('t.co')) trafficSource = 'X (Twitter)';
+                else if (ev.utm_source) trafficSource = ev.utm_source;
+                else if (ev.referrer && ev.referrer !== 'Direct' && ev.referrer !== '') trafficSource = 'Other Website';
+                
                 sourceCounts[trafficSource] = (sourceCounts[trafficSource] || 0) + 1;
                 countedSource.add(ev.session_id);
             }
@@ -245,13 +249,15 @@
             // Fill recent table (first 20 rows)
             if(idx < 20) {
                 const d = new Date(ev.timestamp);
+                // Figure out source for display
+                let dispSource = ev.utm_source || ev.referrer || 'Direct';
                 recentRows += `
                     <tr>
                         <td>${d.toLocaleDateString()} ${d.toLocaleTimeString()}</td>
                         <td><span style="background:#e8f4f8;color:#0366d6;padding:3px 8px;border-radius:12px;font-size:12px;">${ev.event_type}</span></td>
                         <td>${ev.plot_name || '-'}</td>
-                        <td><span style="font-size:12px;color:#555;"><i class="fas fa-desktop"></i> ${ev.device_type || '-'}<br><i class="fas fa-link"></i> ${ev.referrer || '-'}</span></td>
-                        <td>${ev.location || '-'}</td>
+                        <td><span style="font-size:12px;color:#555;">${ev.device_type || '-'}<br>📍 ${ev.location || '-'}</span></td>
+                        <td style="font-size:12px;">${dispSource}</td>
                     </tr>
                 `;
             }
@@ -270,17 +276,27 @@
         const convRate = totalVisits > 0 ? ((waClicks / totalVisits) * 100).toFixed(1) : 0;
         document.getElementById('stat-conv').innerText = `${convRate}%`;
 
-        // Calculate Top Source
-        let topSource = '-';
+        // Calculate Top Source (including Direct)
+        let topSource = 'Direct';
         let maxSource = 0;
         for(const [src, count] of Object.entries(sourceCounts)) {
-            if(count > maxSource && src !== 'Direct') {
+            if(count > maxSource) {
                 maxSource = count;
                 topSource = src;
             }
         }
-        if(topSource === '-' && sourceCounts['Direct']) topSource = 'Direct';
         document.getElementById('stat-top-source').innerText = topSource;
+
+        // Calculate Top Device
+        let topDevice = '-';
+        let maxDevice = 0;
+        for(const [dev, count] of Object.entries(devCounts)) {
+            if(count > maxDevice) {
+                maxDevice = count;
+                topDevice = dev;
+            }
+        }
+        document.getElementById('stat-top-device').innerText = topDevice;
         
         document.querySelector('#activityTable tbody').innerHTML = recentRows;
 
