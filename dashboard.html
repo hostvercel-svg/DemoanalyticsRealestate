@@ -42,8 +42,12 @@
     <div id="dashboard-content" style="display:none;">
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Total Visitors</h3>
+                <h3>Total Unique Visitors</h3>
                 <div class="value" id="stat-visitors">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Returning Visitors</h3>
+                <div class="value" id="stat-returning" style="color:#C9A84C;">0</div>
             </div>
             <div class="stat-card">
                 <h3>Avg. Time on Site (sec)</h3>
@@ -151,6 +155,9 @@
         }
 
         let uniqueSessions = new Set();
+        let uniqueUsers = new Set();
+        let returningUsers = new Set();
+        
         let waClicks = 0;
         let plotViews = 0;
         let totalTime = 0;
@@ -158,11 +165,17 @@
         let plotCounts = {};
         let locCounts = {};
         let devCounts = {};
-        let refCounts = {};
+        let sourceCounts = {};
         let recentRows = '';
 
         events.forEach((ev, idx) => {
             if(ev.session_id) uniqueSessions.add(ev.session_id);
+            if(ev.user_id) {
+                uniqueUsers.add(ev.user_id);
+                if(ev.visit_count > 1) {
+                    returningUsers.add(ev.user_id);
+                }
+            }
             
             if(ev.event_type === 'whatsapp_click') waClicks++;
             if(ev.event_type === 'plot_view') {
@@ -180,9 +193,15 @@
             if(ev.device_type) {
                 devCounts[ev.device_type] = (devCounts[ev.device_type] || 0) + 1;
             }
-            if(ev.referrer && ev.referrer !== 'Direct') {
-                refCounts[ev.referrer] = (refCounts[ev.referrer] || 0) + 1;
+            
+            // Traffic Sources (UTM prioritized over Referrer)
+            let trafficSource = 'Direct';
+            if(ev.utm_source) {
+                trafficSource = `Ad: ${ev.utm_source}`;
+            } else if(ev.referrer && ev.referrer !== 'Direct') {
+                trafficSource = `Ref: ${ev.referrer}`;
             }
+            sourceCounts[trafficSource] = (sourceCounts[trafficSource] || 0) + 1;
 
             // Fill recent table (first 20 rows)
             if(idx < 20) {
@@ -200,7 +219,8 @@
         });
 
         // Update Stats
-        document.getElementById('stat-visitors').innerText = uniqueSessions.size;
+        document.getElementById('stat-visitors').innerText = uniqueUsers.size > 0 ? uniqueUsers.size : uniqueSessions.size;
+        document.getElementById('stat-returning').innerText = returningUsers.size;
         document.getElementById('stat-wa').innerText = waClicks;
         document.getElementById('stat-plots').innerText = plotViews;
         document.getElementById('stat-time').innerText = timeEntries > 0 ? Math.round(totalTime / timeEntries) : 0;
@@ -254,8 +274,8 @@
         });
 
         // Render Referrer Chart
-        const rLabels = Object.keys(refCounts);
-        const rData = Object.values(refCounts);
+        const rLabels = Object.keys(sourceCounts);
+        const rData = Object.values(sourceCounts);
         new Chart(document.getElementById('referrerChart'), {
             type: 'bar',
             data: {

@@ -5,11 +5,21 @@ const SUPABASE_URL = 'https://larhfxegjcxvyjpjckeg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhcmhmeGVnamN4dnlqcGpja2VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjM1OTgsImV4cCI6MjA5NzQzOTU5OH0.7reCUz7FYNkt4O_nIZA27xgve2oLuRhFIA5b8fSIzHg';
 
 let supabaseClient = null;
-let sessionId = localStorage.getItem('analytics_session_id');
+
+// User ID (Persistent) vs Session ID (Temporary)
+let userId = localStorage.getItem('analytics_user_id');
+let sessionId = sessionStorage.getItem('analytics_session_id');
+let visitCount = parseInt(localStorage.getItem('analytics_visit_count') || '0', 10);
+
 let userLocation = 'Unknown';
 let userIp = 'Unknown';
 let maxScroll = 0;
 let timeSpent = 0;
+
+// UTM Parameters parsing
+const urlParams = new URLSearchParams(window.location.search);
+const utmSource = urlParams.get('utm_source') || null;
+const utmCampaign = urlParams.get('utm_campaign') || null;
 
 // Initialize Supabase if keys are provided
 if(SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE') {
@@ -25,17 +35,28 @@ function generateUUID() {
     });
 }
 
-if (!sessionId) {
-    sessionId = generateUUID();
-    localStorage.setItem('analytics_session_id', sessionId);
+if (!userId) {
+    userId = generateUUID();
+    localStorage.setItem('analytics_user_id', userId);
 }
 
-// Fetch Location & IP
-fetch('https://ipapi.co/json/')
+if (!sessionId) {
+    sessionId = generateUUID();
+    sessionStorage.setItem('analytics_session_id', sessionId);
+    
+    // Increment visit count only on new session
+    visitCount += 1;
+    localStorage.setItem('analytics_visit_count', visitCount.toString());
+}
+
+// Fetch Location & IP using ipwho.is (more reliable free tier)
+fetch('https://ipwho.is/')
     .then(response => response.json())
     .then(data => {
-        userIp = data.ip || 'Unknown';
-        userLocation = (data.city && data.country_name) ? `${data.city}, ${data.country_name}` : 'Unknown';
+        if(data.success) {
+            userIp = data.ip || 'Unknown';
+            userLocation = (data.city && data.country) ? `${data.city}, ${data.country}` : 'Unknown';
+        }
         
         // Log Initial Page View once location is fetched
         logEvent('page_view', 'Home Page');
@@ -69,6 +90,10 @@ async function logEvent(eventType, plotName = null) {
                 plot_name: plotName,
                 timestamp: new Date().toISOString(),
                 session_id: sessionId,
+                user_id: userId,
+                visit_count: visitCount,
+                utm_source: utmSource,
+                utm_campaign: utmCampaign,
                 ip_address: userIp,
                 location: userLocation,
                 scroll_depth: maxScroll,
