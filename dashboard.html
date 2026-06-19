@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahmed Real Estates - Analytics Dashboard</title>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; padding: 0; background: #f4f6f8; color: #333; }
+        .header { background: #1B4D2E; color: white; padding: 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; color: #C9A84C; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); text-align: center; }
+        .stat-card h3 { margin: 0 0 10px 0; font-size: 14px; color: #666; text-transform: uppercase; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #1B4D2E; margin: 0; }
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+        .chart-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .chart-card h3 { margin-top: 0; color: #1B4D2E; }
+        .table-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f8f9fa; color: #1B4D2E; font-weight: 600; }
+        @media(max-width: 768px) { .charts-grid { grid-template-columns: 1fr; } }
+        .loading { text-align: center; padding: 50px; font-size: 18px; color: #666; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Real Estate Analytics Dashboard</h1>
+    <p style="margin:5px 0 0 0;font-size:14px;">Powered by Supabase & <a href="https://369AIventures.com" style="color:#C9A84C;text-decoration:none;font-weight:bold;">369AIventures.com</a></p>
+</div>
+
+<div class="container">
+    <div id="loading" class="loading">Fetching live data from database...</div>
+
+    <div id="dashboard-content" style="display:none;">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Visitors</h3>
+                <div class="value" id="stat-visitors">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Avg. Time on Site (sec)</h3>
+                <div class="value" id="stat-time">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>WhatsApp Clicks</h3>
+                <div class="value" id="stat-wa">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Plot Details Viewed</h3>
+                <div class="value" id="stat-plots">0</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Most Popular Plots</h3>
+                <canvas id="plotsChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Traffic Sources (Cities/Regions)</h3>
+                <canvas id="locationChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="charts-grid" style="margin-top:20px;">
+            <div class="chart-card">
+                <h3>Device Types</h3>
+                <canvas id="deviceChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>Top Referrers</h3>
+                <canvas id="referrerChart"></canvas>
+            </div>
+        </div>
+
+        <div class="table-container" style="margin-top:20px;">
+            <h3 style="margin-top:0; color:#1B4D2E;">Recent Activity Log</h3>
+            <table id="activityTable">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Event</th>
+                        <th>Details</th>
+                        <th>Device/Source</th>
+                        <th>Location</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Rows will be populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // SUPABASE CONFIGURATION - UPDATE THESE!
+    // ==========================================
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+    // Initialize Supabase if keys are provided
+    let supabaseClient = null;
+    if(SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE') {
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } else {
+        document.getElementById('loading').innerHTML = `
+            <div style="color:#c0392b; border:2px solid #c0392b; padding:20px; border-radius:8px;">
+                <strong>Configuration Required:</strong><br><br>
+                Please open <code>dashboard.html</code> and <code>analytics.js</code> to replace 
+                <code>YOUR_SUPABASE_URL_HERE</code> and <code>YOUR_SUPABASE_ANON_KEY_HERE</code> with your actual Supabase credentials.
+            </div>`;
+    }
+
+    async function loadData() {
+        if(!supabaseClient) return;
+        
+        try {
+            // Fetch recent 1000 events
+            const { data: events, error } = await supabase
+                .from('analytics_events')
+                .select('*')
+                .order('timestamp', { ascending: false })
+                .limit(1000);
+
+            if(error) throw error;
+
+            processAndRender(events);
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dashboard-content').style.display = 'block';
+        } catch(err) {
+            console.error('Error fetching data:', err);
+            document.getElementById('loading').innerText = 'Failed to load data. Please check console for errors or verify Supabase keys and table name (analytics_events).';
+        }
+    }
+
+    function processAndRender(events) {
+        if(!events || events.length === 0) {
+            document.getElementById('dashboard-content').innerHTML = '<div class="loading">No data collected yet. Visit the website to generate events.</div>';
+            return;
+        }
+
+        let uniqueSessions = new Set();
+        let waClicks = 0;
+        let plotViews = 0;
+        let totalTime = 0;
+        let timeEntries = 0;
+        let plotCounts = {};
+        let locCounts = {};
+        let devCounts = {};
+        let refCounts = {};
+        let recentRows = '';
+
+        events.forEach((ev, idx) => {
+            if(ev.session_id) uniqueSessions.add(ev.session_id);
+            
+            if(ev.event_type === 'whatsapp_click') waClicks++;
+            if(ev.event_type === 'plot_view') {
+                plotViews++;
+                const plot = ev.plot_name || 'Unknown Plot';
+                plotCounts[plot] = (plotCounts[plot] || 0) + 1;
+            }
+            if(ev.event_type === 'time_spent' && ev.time_spent_seconds) {
+                totalTime += ev.time_spent_seconds;
+                timeEntries++;
+            }
+            if(ev.location && ev.location !== 'Unknown') {
+                locCounts[ev.location] = (locCounts[ev.location] || 0) + 1;
+            }
+            if(ev.device_type) {
+                devCounts[ev.device_type] = (devCounts[ev.device_type] || 0) + 1;
+            }
+            if(ev.referrer && ev.referrer !== 'Direct') {
+                refCounts[ev.referrer] = (refCounts[ev.referrer] || 0) + 1;
+            }
+
+            // Fill recent table (first 20 rows)
+            if(idx < 20) {
+                const d = new Date(ev.timestamp);
+                recentRows += `
+                    <tr>
+                        <td>${d.toLocaleDateString()} ${d.toLocaleTimeString()}</td>
+                        <td><span style="background:#e8f4f8;color:#0366d6;padding:3px 8px;border-radius:12px;font-size:12px;">${ev.event_type}</span></td>
+                        <td>${ev.plot_name || '-'}</td>
+                        <td><span style="font-size:12px;color:#555;"><i class="fas fa-desktop"></i> ${ev.device_type || '-'}<br><i class="fas fa-link"></i> ${ev.referrer || '-'}</span></td>
+                        <td>${ev.location || '-'}</td>
+                    </tr>
+                `;
+            }
+        });
+
+        // Update Stats
+        document.getElementById('stat-visitors').innerText = uniqueSessions.size;
+        document.getElementById('stat-wa').innerText = waClicks;
+        document.getElementById('stat-plots').innerText = plotViews;
+        document.getElementById('stat-time').innerText = timeEntries > 0 ? Math.round(totalTime / timeEntries) : 0;
+        
+        document.querySelector('#activityTable tbody').innerHTML = recentRows;
+
+        // Render Plots Chart
+        const pLabels = Object.keys(plotCounts);
+        const pData = Object.values(plotCounts);
+        new Chart(document.getElementById('plotsChart'), {
+            type: 'bar',
+            data: {
+                labels: pLabels.length ? pLabels : ['No data'],
+                datasets: [{
+                    label: 'Views',
+                    data: pData.length ? pData : [0],
+                    backgroundColor: '#C9A84C'
+                }]
+            },
+            options: { responsive: true }
+        });
+
+        // Render Locations Chart
+        const lLabels = Object.keys(locCounts);
+        const lData = Object.values(locCounts);
+        new Chart(document.getElementById('locationChart'), {
+            type: 'doughnut',
+            data: {
+                labels: lLabels.length ? lLabels : ['No location data'],
+                datasets: [{
+                    data: lData.length ? lData : [1],
+                    backgroundColor: ['#1B4D2E', '#2c3e50', '#8e44ad', '#2980b9', '#f39c12']
+                }]
+            },
+            options: { responsive: true }
+        });
+
+        // Render Devices Chart
+        const dLabels = Object.keys(devCounts);
+        const dData = Object.values(devCounts);
+        new Chart(document.getElementById('deviceChart'), {
+            type: 'pie',
+            data: {
+                labels: dLabels.length ? dLabels : ['No device data'],
+                datasets: [{
+                    data: dData.length ? dData : [1],
+                    backgroundColor: ['#2980b9', '#16a085', '#8e44ad']
+                }]
+            },
+            options: { responsive: true }
+        });
+
+        // Render Referrer Chart
+        const rLabels = Object.keys(refCounts);
+        const rData = Object.values(refCounts);
+        new Chart(document.getElementById('referrerChart'), {
+            type: 'bar',
+            data: {
+                labels: rLabels.length ? rLabels : ['Direct / No referrers'],
+                datasets: [{
+                    label: 'Visits',
+                    data: rData.length ? rData : [0],
+                    backgroundColor: '#1B4D2E'
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+
+    // Load data on start
+    loadData();
+
+</script>
+</body>
+</html>
