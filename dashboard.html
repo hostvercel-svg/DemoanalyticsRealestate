@@ -33,7 +33,7 @@
 
 <div class="header">
     <h1>Real Estate Analytics Dashboard</h1>
-    <p style="margin:5px 0 0 0;font-size:14px;">Powered by Supabase & <a href="https://369AIventures.com" style="color:#C9A84C;text-decoration:none;font-weight:bold;">369AIventures.com</a></p>
+    <p style="margin:5px 0 0 0;font-size:14px;">Developed by <a href="https://369AIventures.com" style="color:#C9A84C;text-decoration:none;font-weight:bold;">369AIventures.com</a></p>
 </div>
 
 <div class="container">
@@ -44,6 +44,10 @@
             <div class="stat-card">
                 <h3>Total Unique Visitors</h3>
                 <div class="value" id="stat-visitors">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Sessions</h3>
+                <div class="value" id="stat-sessions" style="color:#2980b9;">0</div>
             </div>
             <div class="stat-card">
                 <h3>Returning Visitors</h3>
@@ -80,7 +84,7 @@
                 <canvas id="deviceChart"></canvas>
             </div>
             <div class="chart-card">
-                <h3>Top Referrers</h3>
+                <h3>Social Media & Platforms Matrix</h3>
                 <canvas id="referrerChart"></canvas>
             </div>
         </div>
@@ -194,13 +198,25 @@
                 devCounts[ev.device_type] = (devCounts[ev.device_type] || 0) + 1;
             }
             
-            // Traffic Sources (UTM prioritized over Referrer)
+            // Traffic Sources (Social Media Matrix)
             let trafficSource = 'Direct';
-            if(ev.utm_source) {
-                trafficSource = `Ad: ${ev.utm_source}`;
-            } else if(ev.referrer && ev.referrer !== 'Direct') {
-                trafficSource = `Ref: ${ev.referrer}`;
-            }
+            
+            // Normalize inputs for easier checking
+            let utm = (ev.utm_source || '').toLowerCase();
+            let ref = (ev.referrer || '').toLowerCase();
+            
+            if (utm.includes('facebook') || ref.includes('facebook')) trafficSource = 'Facebook';
+            else if (utm.includes('instagram') || ref.includes('instagram')) trafficSource = 'Instagram';
+            else if (utm.includes('zameen') || ref.includes('zameen')) trafficSource = 'Zameen.com';
+            else if (utm.includes('olx') || ref.includes('olx')) trafficSource = 'OLX';
+            else if (utm.includes('whatsapp') || ref.includes('whatsapp') || ref.includes('wa.me')) trafficSource = 'WhatsApp';
+            else if (utm.includes('youtube') || ref.includes('youtube')) trafficSource = 'YouTube';
+            else if (utm.includes('tiktok') || ref.includes('tiktok')) trafficSource = 'TikTok';
+            else if (utm.includes('google') || ref.includes('google')) trafficSource = 'Google';
+            else if (utm.includes('twitter') || utm.includes('x') || ref.includes('twitter') || ref.includes('t.co')) trafficSource = 'X (Twitter)';
+            else if (ev.utm_source) trafficSource = `Ad: ${ev.utm_source}`;
+            else if (ev.referrer && ev.referrer !== 'Direct') trafficSource = 'Other Website';
+            
             sourceCounts[trafficSource] = (sourceCounts[trafficSource] || 0) + 1;
 
             // Fill recent table (first 20 rows)
@@ -220,6 +236,7 @@
 
         // Update Stats
         document.getElementById('stat-visitors').innerText = uniqueUsers.size > 0 ? uniqueUsers.size : uniqueSessions.size;
+        document.getElementById('stat-sessions').innerText = uniqueSessions.size;
         document.getElementById('stat-returning').innerText = returningUsers.size;
         document.getElementById('stat-wa').innerText = waClicks;
         document.getElementById('stat-plots').innerText = plotViews;
@@ -227,10 +244,20 @@
         
         document.querySelector('#activityTable tbody').innerHTML = recentRows;
 
+        // Destroy old charts to prevent overlapping when realtime updates happen
+        if(window.myCharts) {
+            if(window.myCharts.plots) window.myCharts.plots.destroy();
+            if(window.myCharts.loc) window.myCharts.loc.destroy();
+            if(window.myCharts.dev) window.myCharts.dev.destroy();
+            if(window.myCharts.ref) window.myCharts.ref.destroy();
+        } else {
+            window.myCharts = {};
+        }
+
         // Render Plots Chart
         const pLabels = Object.keys(plotCounts);
         const pData = Object.values(plotCounts);
-        new Chart(document.getElementById('plotsChart'), {
+        window.myCharts.plots = new Chart(document.getElementById('plotsChart'), {
             type: 'bar',
             data: {
                 labels: pLabels.length ? pLabels : ['No data'],
@@ -246,7 +273,7 @@
         // Render Locations Chart
         const lLabels = Object.keys(locCounts);
         const lData = Object.values(locCounts);
-        new Chart(document.getElementById('locationChart'), {
+        window.myCharts.loc = new Chart(document.getElementById('locationChart'), {
             type: 'doughnut',
             data: {
                 labels: lLabels.length ? lLabels : ['No location data'],
@@ -261,7 +288,7 @@
         // Render Devices Chart
         const dLabels = Object.keys(devCounts);
         const dData = Object.values(devCounts);
-        new Chart(document.getElementById('deviceChart'), {
+        window.myCharts.dev = new Chart(document.getElementById('deviceChart'), {
             type: 'pie',
             data: {
                 labels: dLabels.length ? dLabels : ['No device data'],
@@ -276,7 +303,7 @@
         // Render Referrer Chart
         const rLabels = Object.keys(sourceCounts);
         const rData = Object.values(sourceCounts);
-        new Chart(document.getElementById('referrerChart'), {
+        window.myCharts.ref = new Chart(document.getElementById('referrerChart'), {
             type: 'bar',
             data: {
                 labels: rLabels.length ? rLabels : ['Direct / No referrers'],
@@ -290,8 +317,30 @@
         });
     }
 
+    // Set up Realtime Subscription
+    function setupRealtime() {
+        if(!supabaseClient) return;
+        
+        supabaseClient
+            .channel('public:analytics_events')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'analytics_events' }, payload => {
+                console.log('New event received live!', payload);
+                // Flash visitors metric to show live update
+                const valEl = document.getElementById('stat-visitors');
+                if(valEl) {
+                    valEl.style.color = '#27ae60';
+                    setTimeout(() => valEl.style.color = '#1B4D2E', 1000);
+                }
+                
+                // Reload data smoothly
+                loadData();
+            })
+            .subscribe();
+    }
+
     // Load data on start
     loadData();
+    setupRealtime();
 
 </script>
 </body>
