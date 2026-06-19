@@ -49,11 +49,11 @@ if (!sessionId) {
     localStorage.setItem('analytics_visit_count', visitCount.toString());
 }
 
-// Fetch Location & IP using ipwho.is (more reliable free tier)
-fetch('https://ipwho.is/')
+// Fetch Location & IP using geojs.io (highly reliable, no HTTPS issues, free)
+fetch('https://get.geojs.io/v1/ip/geo.json')
     .then(response => response.json())
     .then(data => {
-        if(data.success) {
+        if(data.ip) {
             userIp = data.ip || 'Unknown';
             userLocation = (data.city && data.country) ? `${data.city}, ${data.country}` : 'Unknown';
         }
