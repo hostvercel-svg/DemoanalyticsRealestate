@@ -105,8 +105,8 @@
     // ==========================================
     // SUPABASE CONFIGURATION - UPDATE THESE!
     // ==========================================
-    const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
-    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+    const SUPABASE_URL = 'https://larhfxegjcxvyjpjckeg.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhcmhmeGVnamN4dnlqcGpja2VnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NjM1OTgsImV4cCI6MjA5NzQzOTU5OH0.7reCUz7FYNkt4O_nIZA27xgve2oLuRhFIA5b8fSIzHg';
 
     // Initialize Supabase if keys are provided
     let supabaseClient = null;
@@ -126,7 +126,7 @@
         
         try {
             // Fetch recent 1000 events
-            const { data: events, error } = await supabase
+            const { data: events, error } = await supabaseClient
                 .from('analytics_events')
                 .select('*')
                 .order('timestamp', { ascending: false })
