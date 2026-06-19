@@ -49,13 +49,24 @@ if (!sessionId) {
     localStorage.setItem('analytics_visit_count', visitCount.toString());
 }
 
-// Fetch Location & IP using geojs.io (highly reliable, no HTTPS issues, free)
-fetch('https://get.geojs.io/v1/ip/geo.json')
+// Fetch Location & IP using ipapi.co - gives city + region detail
+fetch('https://ipapi.co/json/')
     .then(response => response.json())
     .then(data => {
         if(data.ip) {
             userIp = data.ip || 'Unknown';
-            userLocation = (data.city && data.country) ? `${data.city}, ${data.country}` : 'Unknown';
+            // Include region for more detail e.g. "Islamabad, Islamabad Capital Territory, PK"
+            const city = data.city || '';
+            const region = data.region || '';
+            const country = data.country_name || '';
+            
+            if(city && region && city !== region) {
+                userLocation = `${city}, ${region}, ${country}`;
+            } else if(city && country) {
+                userLocation = `${city}, ${country}`;
+            } else {
+                userLocation = 'Unknown';
+            }
         }
         
         // Log Initial Page View once location is fetched
