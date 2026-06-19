@@ -65,6 +65,14 @@
                 <h3>Plot Details Viewed</h3>
                 <div class="value" id="stat-plots">0</div>
             </div>
+            <div class="stat-card">
+                <h3>Conversion (WA Clicks)</h3>
+                <div class="value" id="stat-conv" style="color:#27ae60;">0%</div>
+            </div>
+            <div class="stat-card">
+                <h3>Top Traffic Source</h3>
+                <div class="value" id="stat-top-source" style="font-size:24px;">-</div>
+            </div>
         </div>
 
         <div class="charts-grid">
@@ -170,6 +178,12 @@
         let locCounts = {};
         let devCounts = {};
         let sourceCounts = {};
+        
+        // Track unique sessions for demographics to prevent overcounting events
+        let countedLoc = new Set();
+        let countedDev = new Set();
+        let countedSource = new Set();
+        
         let recentRows = '';
 
         events.forEach((ev, idx) => {
@@ -192,10 +206,16 @@
                 timeEntries++;
             }
             if(ev.location && ev.location !== 'Unknown') {
-                locCounts[ev.location] = (locCounts[ev.location] || 0) + 1;
+                if(!countedLoc.has(ev.session_id)) {
+                    locCounts[ev.location] = (locCounts[ev.location] || 0) + 1;
+                    countedLoc.add(ev.session_id);
+                }
             }
             if(ev.device_type) {
-                devCounts[ev.device_type] = (devCounts[ev.device_type] || 0) + 1;
+                if(!countedDev.has(ev.session_id)) {
+                    devCounts[ev.device_type] = (devCounts[ev.device_type] || 0) + 1;
+                    countedDev.add(ev.session_id);
+                }
             }
             
             // Traffic Sources (Social Media Matrix)
@@ -217,7 +237,10 @@
             else if (ev.utm_source) trafficSource = `Ad: ${ev.utm_source}`;
             else if (ev.referrer && ev.referrer !== 'Direct') trafficSource = 'Other Website';
             
-            sourceCounts[trafficSource] = (sourceCounts[trafficSource] || 0) + 1;
+            if(!countedSource.has(ev.session_id)) {
+                sourceCounts[trafficSource] = (sourceCounts[trafficSource] || 0) + 1;
+                countedSource.add(ev.session_id);
+            }
 
             // Fill recent table (first 20 rows)
             if(idx < 20) {
@@ -235,12 +258,29 @@
         });
 
         // Update Stats
-        document.getElementById('stat-visitors').innerText = uniqueUsers.size > 0 ? uniqueUsers.size : uniqueSessions.size;
+        const totalVisits = uniqueUsers.size > 0 ? uniqueUsers.size : uniqueSessions.size;
+        document.getElementById('stat-visitors').innerText = totalVisits;
         document.getElementById('stat-sessions').innerText = uniqueSessions.size;
         document.getElementById('stat-returning').innerText = returningUsers.size;
         document.getElementById('stat-wa').innerText = waClicks;
         document.getElementById('stat-plots').innerText = plotViews;
         document.getElementById('stat-time').innerText = timeEntries > 0 ? Math.round(totalTime / timeEntries) : 0;
+        
+        // Calculate Conversion Rate
+        const convRate = totalVisits > 0 ? ((waClicks / totalVisits) * 100).toFixed(1) : 0;
+        document.getElementById('stat-conv').innerText = `${convRate}%`;
+
+        // Calculate Top Source
+        let topSource = '-';
+        let maxSource = 0;
+        for(const [src, count] of Object.entries(sourceCounts)) {
+            if(count > maxSource && src !== 'Direct') {
+                maxSource = count;
+                topSource = src;
+            }
+        }
+        if(topSource === '-' && sourceCounts['Direct']) topSource = 'Direct';
+        document.getElementById('stat-top-source').innerText = topSource;
         
         document.querySelector('#activityTable tbody').innerHTML = recentRows;
 
